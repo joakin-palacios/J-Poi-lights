@@ -1,0 +1,6 @@
+{
+  "name": "pair_sync",
+  "build": { "libArchive": false },
+  "platforms": ["espressif32"],
+  "frameworks": ["arduino"]
+}

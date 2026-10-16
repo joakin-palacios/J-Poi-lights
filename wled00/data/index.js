@@ -1149,14 +1149,100 @@ function updateTrail(e)
 	if (e==null) return;
 	let sd = e.parentNode.getElementsByClassName('sliderdisplay')[0];
 	if (sd && getComputedStyle(sd).getPropertyValue("--bg").trim() !== "none") { // trim() for Safari
-		var max = e.hasAttribute('max') ? e.attributes.max.value : 255;
-		var perc = Math.round(e.value * 100 / max);
+		var min = e.hasAttribute('min') ? Number(e.attributes.min.value) : 0;
+		var max = e.hasAttribute('max') ? Number(e.attributes.max.value) : 255;
+		var perc = max > min ? Math.round((e.value-min) * 100 / (max-min)) : 0;
 		if (perc < 50) perc += 2;
 		var val = `linear-gradient(90deg, var(--bg) ${perc}%, var(--c-6) ${perc}%)`;
 		sd.style.backgroundImage = val;
 	}
 	var b = e.parentNode.parentNode.getElementsByTagName('output')[0];
-	if (b) b.innerHTML = e.value;
+	if (b) {
+		let value = e.value;
+		if (e.id === 'sliderC1' && povImageControl) {
+			value = povImageControl.images[Number(e.value)-1] || 0;
+		} else if (e.id === 'sliderSpeed' && povWaitControl) {
+			value = 4 + Math.round(Number(e.value) * 256 / 255);
+		}
+		b.innerHTML = value;
+	}
+}
+
+var povImageControl = null;
+var povImageRequest = 0;
+var povImageStateValue = 0;
+var povWaitControl = null;
+
+function setPovImageSliderValue(value, fx)
+{
+	let slider = gId('sliderC1');
+	povImageStateValue = Number(value) || 0;
+	if (!povImageControl || povImageControl.fx !== fx) {
+		slider.value = povImageStateValue;
+		return;
+	}
+	let index = povImageControl.images.indexOf(povImageStateValue);
+	slider.value = povImageControl.images.length ? Math.max(1, index+1) : 0;
+	updateTrail(slider);
+}
+
+async function configurePovImageSlider(fx, enabled)
+{
+	let slider = gId('sliderC1');
+	if (!enabled) {
+		povImageControl = null;
+		povImageRequest++;
+		slider.min = 0;
+		slider.max = 255;
+		slider.step = 1;
+		slider.value = povImageStateValue;
+		updateTrail(slider);
+		return;
+	}
+	if (povImageControl && povImageControl.fx === fx) {
+		setPovImageSliderValue(povImageStateValue, fx);
+		return;
+	}
+
+	const request = ++povImageRequest;
+	povImageControl = {fx: fx, images: []};
+	slider.min = 0;
+	slider.max = 0;
+	slider.step = 1;
+	slider.value = 0;
+	updateTrail(slider);
+	try {
+		let data = null;
+		for (let attempt = 0; attempt < 10; attempt++) {
+			if (attempt) await new Promise(resolve => setTimeout(resolve, 100));
+			const response = await fetch(getURL('/json/pov-images'));
+			if (!response.ok) throw new Error('Could not load POV images');
+			data = await response.json();
+			if (data.ready) break;
+		}
+		if (!data || !data.ready) throw new Error('POV image scan timed out');
+		if (request !== povImageRequest || Number(data.fx) !== fx) return;
+		const images = Array.isArray(data.images) ? data.images.map(Number).filter(v => v >= 1 && v <= 255) : [];
+		povImageControl = {fx: fx, images: images};
+		slider.min = images.length ? 1 : 0;
+		slider.max = images.length || 0;
+		slider.step = 1;
+		setPovImageSliderValue(povImageStateValue || Number(data.selected), fx);
+	} catch (error) {
+		if (request === povImageRequest) showToast(error.message, true);
+	}
+}
+
+function configurePovWaitSlider(fx, enabled)
+{
+	let slider = gId('sliderSpeed');
+	if (!enabled) {
+		povWaitControl = null;
+		updateTrail(slider);
+		return;
+	}
+	povWaitControl = {fx: fx};
+	updateTrail(slider);
 }
 
 // rangetouch slider function
@@ -1504,8 +1590,8 @@ function readState(s,command=false)
 
 	gId('sliderSpeed').value = i.sx;
 	gId('sliderIntensity').value = i.ix;
-	gId('sliderC1').value  = i.c1 ? i.c1 : 0;
-	gId('sliderC2').value  = i.c2 ? i.c2 : 0;
+	setPovImageSliderValue(i.c1 ? i.c1 : 0, i.fx);
+	gId('sliderC2').value = i.c2 ? i.c2 : 0;
 	gId('sliderC3').value  = i.c3 ? i.c3 : 0;
 	gId('checkO1').checked = !(!i.o1);
 	gId('checkO2').checked = !(!i.o2);
@@ -1585,6 +1671,13 @@ function setEffectParameters(idx)
 	var slOnOff = (effectPars.length==0 || effectPars[0]=='')?[]:effectPars[0].split(",");
 	var coOnOff = (effectPars.length<2  || effectPars[1]=='')?[]:effectPars[1].split(",");
 	var paOnOff = (effectPars.length<3  || effectPars[2]=='')?[]:effectPars[2].split(",");
+
+	const hasPovImages = slOnOff.length > 2 && slOnOff[2].endsWith('#pov-images');
+	if (hasPovImages) slOnOff[2] = slOnOff[2].slice(0, -11);
+	const hasPovWait = slOnOff.length > 0 && slOnOff[0].endsWith('#pov-wait');
+	if (hasPovWait) slOnOff[0] = slOnOff[0].slice(0, -9);
+	configurePovImageSlider(idx, hasPovImages);
+	configurePovWaitSlider(idx, hasPovWait);
 
 	// set html slider items on/off
 	d.querySelectorAll("#sliders .sliderwrap").forEach((slider, i)=>{
@@ -2388,6 +2481,14 @@ function setFX(ind = null)
 	} else {
 		d.querySelector(`#fxlist input[name="fx"][value="${ind}"]`).checked = true;
 	}
+	if (Array.isArray(fxdata) && fxdata.length > ind) {
+		let sliders = (fxdata[ind].split(';')[0] || '').split(',');
+		if (sliders.length > 2 && sliders[2].endsWith('#pov-images')) {
+			povImageControl = null;
+			povImageRequest++;
+		}
+		if (sliders.length > 0 && sliders[0].endsWith('#pov-wait')) povWaitControl = null;
+	}
 
 	// Close effect dialog in simplified UI
 	if (simplifiedUI) {
@@ -2438,6 +2539,7 @@ function setCustom(i=1)
 	if (i<1 || i>3) return;
 	var obj = {"seg": {}};
 	var val = parseInt(gId(`sliderC${i}`).value);
+	if (i===1 && povImageControl) val = povImageControl.images[val-1] || 0;
 	if      (i===3) obj.seg.c3 = val;
 	else if (i===2) obj.seg.c2 = val;
 	else            obj.seg.c1 = val;

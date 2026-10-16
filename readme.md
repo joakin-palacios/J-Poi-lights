@@ -1,3 +1,27 @@
+# J Poi lights
+
+Custom ESP32-S3 poi firmware based on [WLED](https://github.com/Aircoookie/WLED).
+
+- [Numbered POV](usermods/numbered_pov/README.md): numbered BMP image playback.
+- [Pair Sync](usermods/pair_sync/README.md): leader/follower scene and image synchronization.
+- `platformio_override.ini`: LOLIN S3 Mini build with MPU6050, Numbered POV, and Pair Sync enabled.
+
+## WLED updates
+
+This repository is `origin`; the original WLED repository is `upstream`.
+On a fresh clone, add it once with `git remote add upstream https://github.com/Aircoookie/WLED.git`.
+With local work committed, import updates using:
+
+```sh
+git fetch upstream
+git merge upstream/main
+```
+
+Resolve any conflicts and verify the firmware before running `git push origin main`.
+WLED's original documentation and license are preserved below.
+
+---
+
 <p align="center">
   <img src="/images/wled_logo_akemi.png">
   <a href="https://github.com/wled-dev/WLED/releases"><img src="https://img.shields.io/github/release/wled-dev/WLED.svg?style=flat-square"></a>

@@ -10,6 +10,8 @@
 #define UDP_IN_MAXSIZE 1472
 #define PRESUMED_NETWORK_DELAY 3 //how many ms could it take on avg to reach the receiver? This will be added to transmitted times
 
+bool usermodBroadcastIP(IPAddress& address) __attribute__((weak));
+
 typedef struct PartialEspNowPacket {
   uint8_t magic;
   uint8_t packet;
@@ -196,7 +198,10 @@ void notify(byte callMode, bool followUp)
 #endif
   {
     DEBUG_PRINTLN(F("UDP sending packet."));
-    IPAddress broadcastIp = ~uint32_t(Network.subnetMask()) | uint32_t(Network.gatewayIP());
+    IPAddress broadcastIp;
+    if (!usermodBroadcastIP || !usermodBroadcastIP(broadcastIp)) {
+      broadcastIp = ~uint32_t(Network.subnetMask()) | uint32_t(Network.gatewayIP());
+    }
     notifierUdp.beginPacket(broadcastIp, udpPort);
     notifierUdp.write(udpOut, WLEDPACKETSIZE); // TODO: add actual used buffer size
     notifierUdp.endPacket();

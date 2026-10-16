@@ -1,0 +1,5 @@
+{
+  "name": "numbered_pov",
+  "build": { "libArchive": false },
+  "platforms": ["espressif32"]
+}

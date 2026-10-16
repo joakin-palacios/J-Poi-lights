@@ -1,0 +1,185 @@
+WLED 1D EFFECTS REFERENCE
+=========================
+
+This file describes the effects compiled into the esp32s3_4M_qspi firmware
+that work on normal one-dimensional LED segments. Effects that require a 2D
+matrix are intentionally excluded. It contains 161 built-in WLED effects and
+the custom Numbered POV effect, ordered alphabetically by effect name.
+Effects marked Audio use simulated audio unless a compatible audio source is
+available.
+
+027 Android - Moves a variable-width bright section along the segment.
+038 Aurora - Simulates softly moving, overlapping aurora-like color waves.
+115 Blends - Smoothly blends changing random palette colors across the segment.
+001 Blink - Alternates between the primary and secondary colors.
+026 Blink Rainbow - Blinks the segment while changing its rainbow color.
+163 Blurz [Audio] - Flashes FFT-driven pixels and then blurs and fades them.
+091 Bouncing Balls - Simulates multiple colored balls bouncing under gravity.
+068 Bpm - Pulses palette colors back and forth at a regular beat.
+002 Breathe - Smoothly brightens and dims between the selected colors.
+088 Candle - Simulates the irregular brightness of a single candle flame.
+102 Candle Multi - Gives each pixel an independent candle-like flicker.
+028 Chase - Runs a primary-color block over a secondary-color background.
+037 Chase 2 - Scrolls alternating blocks of primary and secondary color.
+054 Chase 3 - Scrolls a repeating chase made from three selected colors.
+031 Chase Flash - Moves a pair of flashing pixels along the segment.
+032 Chase Flash Rnd - Runs Chase Flash with random flash and trail colors.
+030 Chase Rainbow - Runs a chase with a rainbow-colored trail.
+029 Chase Random - Runs a chase that leaves changing random colors behind.
+111 Chunchun - Moves small colored dots in a bird-like circular formation.
+218 Color Clouds - Moves soft, colorful procedural clouds along the segment.
+034 Colorful - Scrolls a repeating red, amber, green, and blue style pattern.
+008 Colorloop - Cycles the whole segment through the rainbow.
+074 Colortwinkles - Spawns randomly colored pixels that brighten and fade.
+067 Colorwaves - Produces Pride-style flowing waves using the selected palette.
+077 Copy Segment - Copies another segment with optional color shifting, lightening, and axis selection.
+112 Dancing Shadows - Moves multiple irregular spotlights across the segment.
+018 Dissolve - Randomly replaces pixels until the segment dissolves between colors.
+019 Dissolve Rnd - Dissolves pixels into randomly selected colors.
+159 DJ Light [Audio] - Sends sound-reactive light outward from the center.
+096 Drip - Simulates drops falling and rebounding from the end of the segment.
+007 Dynamic - Gives pixels independently changing random colors.
+117 Dynamic Smooth - Smoothly blends each pixel through independently changing palette colors.
+012 Fade - Smoothly fades between the primary and secondary colors.
+049 Fairy - Simulates asynchronously flashing fairy or Christmas lights.
+051 Fairytwinkle - Starts from a lit background and produces soft fading twinkles.
+069 Fill Noise - Fills the segment with animated procedural noise.
+066 Fire 2012 - Simulates rising, cooling flames using the selected fire palette.
+045 Fire Flicker - Randomly varies pixel brightness to resemble flickering fire.
+042 Fireworks - Creates random colored bursts that brighten and fade.
+090 Fireworks 1D - Launches and explodes one-dimensional fireworks along the segment.
+089 Fireworks Starburst - Creates exploding multicolor starbursts with fading fragments.
+110 Flow - Combines flowing palette gradients with alternating spot-like zones.
+179 Flow Stripe - Produces smoothly rotating colors along a strip.
+155 Freqmap [Audio] - Maps the strongest audio frequency across the segment.
+138 Freqmatrix [Audio] - Produces a frequency-reactive pattern whose trails start at the segment edge.
+141 Freqpixels [Audio] - Colors randomly placed pixels according to audio frequency content.
+137 Freqwave [Audio] - Maps prominent audio frequencies into moving HSV color waves.
+087 Glitter - Adds glittering pixels over a moving palette or background.
+046 Gradient - Moves a saturation gradient of the primary color along the segment.
+156 Gravcenter [Audio] - Shows a gravity-affected volume meter expanding from the center with noise.
+157 Gravcentric [Audio] - Shows a center-originating gravity volume meter colored from the palette.
+158 Gravfreq [Audio] - Displays a centered VU meter whose center color follows frequency.
+132 Gravimeter [Audio] - Shows a gravity-affected volume meter with procedural motion.
+082 Halloween Eyes - Places a pair of blinking eyes at changing positions.
+100 Heartbeat - Pulses the segment with a double-beat rhythm.
+058 ICU - Moves two eye-like lights on opposite sides of the segment.
+053 Image - Renders an image or animated GIF from the filesystem.
+064 Juggle - Moves several colored dots at different rates while leaving trails.
+130 Juggles [Audio] - Juggles multiple sound-reactive colored balls along the segment.
+075 Lake - Creates calm, gently moving palette-colored waves.
+041 Lighthouse - Sends a dot from one end to the other with a fading tail.
+057 Lightning - Produces irregular flashes resembling lightning strikes.
+047 Loading - Moves a fading sawtooth-style loading pattern along the segment.
+131 Matripix [Audio] - Displays a scrolling sound-reactive matrix-like strip pattern.
+076 Meteor - Moves a bright meteor with a randomly decaying tail.
+135 Midnoise [Audio] - Sends volume-reactive Perlin noise outward from the center.
+059 Multi Comet - Sends multiple comets across the segment with fading tails.
+070 Noise 1 - Displays a rapidly shifting palette-noise pattern.
+071 Noise 2 - Displays an alternate fast-moving palette-noise pattern.
+072 Noise 3 - Displays a smoother animated noise pattern.
+073 Noise 4 - Produces a noisy, sparkle-like palette pattern.
+107 Noise Pal - Displays slow, peaceful noise with gradually blended palettes.
+143 Noisefire [Audio] - Produces a volume-reactive fire pattern using procedural noise.
+136 Noisemeter [Audio] - Displays a noise-textured, volume-reactive meter.
+145 Noisemove [Audio] - Uses Perlin noise to move pixels representing different frequency bands.
+142 Numbered POV [Custom] - Displays successive columns from a selected numbered BMP for persistence-of-vision use.
+062 Oscillate - Moves primary and secondary color regions between opposite ends.
+101 Pacifica - Layers blue-green waves to resemble gently moving ocean water.
+151 PacMan - Animates Pac-Man, dots, power dots, and ghosts along the segment.
+065 Palette - Scrolls and optionally rotates the selected palette across the segment.
+098 Percent - Lights a configurable percentage of the segment.
+147 Perlin Move - Moves fading pixels through positions selected by Perlin noise.
+105 Phased - Displays palette-colored sine waves with changing phase.
+109 Phased Noise - Distorts phased sine waves with procedural noise.
+128 Pixels [Audio] - Spawns random sound-reactive pixels that fade away.
+129 Pixelwave [Audio] - Sends sound-reactive pixel waves outward from the center.
+097 Plasma - Displays flowing interference waves resembling a plasma lamp.
+133 Plasmoid [Audio] - Generates sound-reactive, sine-based plasma shapes.
+095 Popcorn - Launches colored kernels that rise and fall like popping corn.
+063 Pride 2015 - Produces a continuously shifting rainbow with brightness variation.
+209 PS 1D Balance - Moves particles back and forth under oscillating or random force.
+210 PS Chase - Runs evenly spaced, optionally playful particles along the segment.
+204 PS Dancing Shadows - Moves particle-based spotlights with blur and changing colors.
+202 PS DripDrop - Simulates falling drops or rain with optional splashes.
+213 PS Fire 1D - Builds a rising one-dimensional flame from aging particles.
+205 PS Fireworks 1D - Launches particle rockets that explode along a one-dimensional segment.
+212 PS GEQ 1D [Audio] - Emits particles from positions corresponding to audio frequency bands.
+207 PS Hourglass - Drops colliding particles from one end to the other at timed intervals.
+203 PS Pinball - Simulates bouncing or rolling particles with optional collisions.
+215 PS Sonic Boom [Audio] - Explodes particles at configurable positions when audio beats are detected.
+214 PS Sonic Stream [Audio] - Sends frequency-triggered particles streaming along the segment.
+206 PS Sparkler - Moves one or more emitters that shed short-lived sparks.
+208 PS Spray 1D - Sprays particles along the segment under configurable gravity.
+216 PS Springy - Connects particles with simulated springs that react to pulses or audio.
+211 PS Starburst - Produces particle explosions with shrinking, cooling fragments.
+144 Puddlepeak [Audio] - Triggers colored puddles when audio peaks are detected.
+134 Puddles [Audio] - Creates colored puddles whose size responds to volume.
+078 Railway - Alternates two colors and smoothly fades each pixel to its opposite color.
+043 Rain - Moves fading colored drops along the segment.
+009 Rainbow - Displays a moving rainbow distributed along the segment.
+033 Rainbow Runner - Runs rainbow-colored pixels over a solid-color trail.
+005 Random Colors - Applies a random color to the entire segment, optionally fading between choices.
+079 Ripple - Emits expanding, fading color ripples from random positions.
+148 Ripple Peak [Audio] - Triggers expanding ripples from detected audio peaks.
+099 Ripple Rainbow - Produces ripples over a dim, color-changing rainbow background.
+185 Rocktaves [Audio] - Maps equivalent musical notes across octaves to matching colors.
+048 Rolling Balls - Rolls multiple colored balls along the segment with optional collisions and trails.
+015 Running - Scrolls smooth sine-wave color bands of the selected colors.
+052 Running Dual - Scrolls sine-wave color bands in opposite directions.
+016 Saw - Scrolls repeating sawtooth-shaped color waves.
+010 Scan - Moves one or more bright dots back and forth.
+011 Scan Dual - Sends scanning dots inward from both ends.
+040 Scanner - Moves a dot between the ends while leaving a fading trail.
+060 Scanner Dual - Runs two opposing scanner dots with fading trails.
+161 Shimmer - Sweeps a configurable, optionally modulated gradient across the segment.
+108 Sine - Produces controllable sine-wave bands along the segment.
+092 Sinelon - Moves a sinusoidal bright dot with a fading trail.
+093 Sinelon Dual - Runs Sinelon dots from both directions.
+094 Sinelon Rainbow - Runs a Sinelon-style dot while cycling rainbow colors.
+219 Slow Transition - Very slowly blends the palette, white level, and color temperature toward new settings.
+000 Solid - Displays one constant color across the segment.
+103 Solid Glitter - Places glittering pixels over a solid background.
+083 Solid Pattern - Repeats solid foreground and background blocks.
+084 Solid Pattern Tri - Repeats a static pattern made from three selected colors.
+020 Sparkle - Adds intermittent bright sparkles over the selected background.
+021 Sparkle Dark - Flashes isolated effect-colored pixels over a dark or contrasting background.
+022 Sparkle+ - Produces a denser, more energetic field of sparkles.
+085 Spots - Draws repeating bright spots whose spread and width are adjustable.
+086 Spots Fade - Draws spots with smoothly fading edges.
+039 Stream - Advances zones of randomly changing color along the segment.
+061 Stream 2 - Streams a succession of randomly colored sections.
+023 Strobe - Rapidly flashes between the primary and secondary colors.
+025 Strobe Mega - Fires repeated groups of rapid strobe flashes.
+024 Strobe Rainbow - Produces a strobe while cycling rainbow colors.
+104 Sunrise - Gradually raises or lowers a warm sunrise-style glow.
+006 Sweep - Sweeps color back and forth without resetting at the segment boundary.
+036 Sweep Random - Sweeps back and forth using a new random color each cycle.
+044 Tetrix - Drops and stacks colored blocks in a Tetris-like animation.
+013 Theater - Moves evenly spaced primary-color lights across a contrasting background.
+014 Theater Rainbow - Runs a theater-chase pattern while cycling through rainbow colors.
+035 Traffic Light - Simulates a cycling traffic signal pattern.
+056 Tri Fade - Smoothly fades among three selected colors.
+055 Tri Wipe - Wipes three selected colors across the segment in sequence.
+116 TV Simulator - Produces irregular color and brightness changes resembling television light.
+017 Twinkle - Randomly lights individual pixels and fades them away.
+081 Twinklecat - Produces a variation of Twinklefox with reversible cooling behavior.
+080 Twinklefox - Produces natural-looking palette twinkles with warm-up and cool-down phases.
+106 Twinkleup - Creates deterministic pixels that fade up and down at varied phases.
+050 Two Dots - Moves two independently colored dots across the segment.
+113 Washing Machine - Alternates rotating waves forward, paused, and backward like a wash cycle.
+003 Wipe - Sweeps the primary color across the segment and then reverses it.
+004 Wipe Random - Repeatedly wipes the segment using randomly selected colors.
+
+NOTES
+-----
+
+- Effect IDs are retained for cross-reference but do not determine this file's
+  alphabetical order.
+- Numbered POV is the only custom effect in this firmware. It reads /1.bmp
+  through /255.bmp and advances image columns using its 4-260 ms wait control.
+- The Image effect reads supported image or animated GIF files from the WLED
+  filesystem and is separate from Numbered POV.
+- PS effects use WLED's particle-system engine and may require more memory or
+  processing time than simpler effects.
+- Effect availability and numeric IDs are specific to this firmware build.
