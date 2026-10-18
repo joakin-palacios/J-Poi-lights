@@ -6,6 +6,15 @@ Custom ESP32-S3 poi firmware based on [WLED](https://github.com/Aircoookie/WLED)
 - [Pair Sync](usermods/pair_sync/README.md): leader/follower scene and image synchronization.
 - `platformio_override.ini`: LOLIN S3 Mini build with MPU6050, Numbered POV, and Pair Sync enabled.
 
+## Manual GitHub Actions
+
+All workflows are manual-only: pushes, pull requests, tags, and schedules do not start them.
+Open **Actions**, select a workflow, and click **Run workflow** to start it.
+**WLED CI** builds the configured firmware and runs the web-tooling tests; firmware downloads appear under the run's **Artifacts**.
+**Deploy Nightly** publishes a prerelease when started manually. **WLED Release CI** creates a draft release using the supplied tag and selected ref; if the tag already exists, select that tag as the ref.
+**Usermod CI** runs the broad usermod build matrix. **Close stale issues and PRs** can mark or close inactive items when started manually.
+The shared **WLED Build** can also be started directly and is called by CI and release workflows.
+
 ## WLED updates
 
 This repository is `origin`; the original WLED repository is `upstream`.
