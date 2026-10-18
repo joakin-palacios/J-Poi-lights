@@ -18,7 +18,6 @@ constexpr uint8_t ROLE_FOLLOWER = 2;
 constexpr uint8_t SYNC_GROUP = 0x01;
 constexpr uint32_t CONTROL_POLL_MS = 1000;
 constexpr uint32_t RESOURCE_SCAN_MS = 10000;
-constexpr uint32_t MAINTENANCE_MS = 300000;
 constexpr uint32_t HTTP_TIMEOUT_MS = 3500;
 constexpr size_t MAX_BMP_SIZE = 768U * 1024U;
 
@@ -54,28 +53,6 @@ public:
 
     if (_role != ROLE_FOLLOWER) return;
 
-    if (_maintenance) {
-      keepExclusiveAp();
-      if (_returnRequested || millis() - _maintenanceStarted >= MAINTENANCE_MS) leaveMaintenance();
-      return;
-    }
-
-    // A normal WLED long press can open the AP even in button-only mode.
-    // Adopt it into the same bounded maintenance lifecycle.
-    if (apActive && !Network.isConnected()) {
-      _maintenance = true;
-      _maintenanceStarted = millis();
-      receiveGroups = 0;
-      keepExclusiveAp();
-      return;
-    }
-
-    if (_enterMaintenanceRequested) {
-      _enterMaintenanceRequested = false;
-      enterMaintenance();
-      return;
-    }
-
     if (Network.isConnected() && elapsed(_lastControlPoll, CONTROL_POLL_MS)) {
       _lastControlPoll = millis();
       pollControl();
@@ -83,7 +60,7 @@ public:
   }
 
   void connected() override {
-    if (_role == ROLE_FOLLOWER && !_maintenance) {
+    if (_role == ROLE_FOLLOWER) {
       _lastControlPoll = 0;
       _localSceneRevision = 0;
     }
@@ -99,38 +76,11 @@ public:
     }
   }
 
-  bool handleButton(uint8_t button) override {
-    if (!_maintenance || button != _returnButton || button >= buttons.size()) return false;
-    const bool pressed = isButtonPressed(button);
-    if (pressed) {
-      _returnButtonPressed = true;
-    } else if (_returnButtonPressed) {
-      _returnButtonPressed = false;
-      _returnRequested = true;
-    }
-    return true;
-  }
-
   void addToJsonState(JsonObject& root) override {
     JsonObject state = root.createNestedObject(F("PairSync"));
     state[F("role")] = _role;
-    state[F("maintenance")] = _maintenance;
     state[F("sceneRevision")] = _role == ROLE_LEADER ? _sceneRevision : _localSceneRevision;
     state[F("resourceGeneration")] = _role == ROLE_LEADER ? _resourceGeneration : _localResourceGeneration;
-  }
-
-  void readFromJsonState(JsonObject& root) override {
-    JsonObject command = root[F("PairSync")];
-    if (command.isNull()) return;
-    if (_role == ROLE_LEADER && command[F("openFollowerAP")] == true) {
-      portENTER_CRITICAL(&_stateMux);
-      _commandSequence++;
-      if (_commandSequence == 0) _commandSequence = 1;
-      portEXIT_CRITICAL(&_stateMux);
-    }
-    if (_role == ROLE_FOLLOWER && _maintenance && command[F("returnToLeader")] == true) {
-      _returnRequested = true;
-    }
   }
 
   void addToJsonInfo(JsonObject& root) override {
@@ -140,10 +90,8 @@ public:
     status.add(roleName());
     if (_role == ROLE_LEADER) {
       status.add(followerOnline() ? F("follower online") : F("follower offline"));
-      status.add(F("<button class=\"btn btn-xs\" onclick='requestJson({PairSync:{openFollowerAP:true}})'>Open follower AP</button>"));
     } else if (_role == ROLE_FOLLOWER) {
-      status.add(_maintenance ? F("maintenance AP") : (Network.isConnected() ? F("leader connected") : F("leader disconnected")));
-      if (_maintenance) status.add(F("<button class=\"btn btn-xs\" onclick='requestJson({PairSync:{returnToLeader:true}})'>Return to leader</button>"));
+      status.add(Network.isConnected() ? F("leader connected") : F("leader disconnected"));
     }
   }
 
@@ -151,7 +99,6 @@ public:
     JsonObject top = root.createNestedObject(F("PairSync"));
     top[F("role")] = _role;
     top[F("leaderHost")] = _leaderHost;
-    top[F("returnButton")] = _returnButton;
   }
 
   bool readFromConfig(JsonObject& root) override {
@@ -160,7 +107,6 @@ public:
     bool complete = !top.isNull();
     complete &= getJsonValue(top[F("role")], _role, ROLE_DISABLED);
     complete &= getJsonValue(top[F("leaderHost")], _leaderHost, String(F("4.3.2.1")));
-    complete &= getJsonValue(top[F("returnButton")], _returnButton, uint8_t(0));
     if (_role > ROLE_FOLLOWER) _role = ROLE_DISABLED;
     if (_setupDone && oldRole != _role) _rolePending = true;
     return complete;
@@ -171,8 +117,7 @@ public:
                    "addOption(dd,'Disabled',0);"
                    "addOption(dd,'Leader',1);"
                    "addOption(dd,'Follower',2);"
-                   "addInfo('PairSync:leaderHost',1,' Leader address (default 4.3.2.1)');"
-                   "addInfo('PairSync:returnButton',1,' WLED button index used to leave maintenance');"));
+                   "addInfo('PairSync:leaderHost',1,' Leader address (default 4.3.2.1)');"));
   }
 
   uint16_t getId() override { return USERMOD_ID_PAIR_SYNC; }
@@ -200,9 +145,6 @@ private:
 
   void applyRole() {
     _rolePending = false;
-    _maintenance = false;
-    _returnRequested = false;
-    _enterMaintenanceRequested = false;
     _lastError = String();
 
     if (_role == ROLE_LEADER) {
@@ -259,28 +201,6 @@ private:
     lastReconnectAttempt = millis();
   }
 
-  void enterMaintenance() {
-    _maintenance = true;
-    _maintenanceStarted = millis();
-    _returnRequested = false;
-    receiveGroups = 0;
-    keepExclusiveAp();
-  }
-
-  void leaveMaintenance() {
-    _maintenance = false;
-    _returnRequested = false;
-    _returnButtonPressed = false;
-    _localSceneRevision = 0;
-    _localResourceGeneration = 0;
-    apBehavior = AP_BEHAVIOR_BUTTON_ONLY;
-    configureUdp(false);
-    stopAp();
-    interfacesInited = false;
-    lastReconnectAttempt = 0;
-    forceReconnect = true;
-  }
-
   static void stopAp() {
     dnsServer.stop();
     WiFi.softAPdisconnect(true);
@@ -294,10 +214,6 @@ private:
         return;
       }
       _followerLastSeen = millis();
-      uint32_t commandSequence;
-      portENTER_CRITICAL(&_stateMux);
-      commandSequence = _commandSequence;
-      portEXIT_CRITICAL(&_stateMux);
       String body;
       body.reserve(180);
       body += F("{\"schema\":1,\"boot\":");
@@ -306,10 +222,6 @@ private:
       body += _sceneRevision;
       body += F(",\"resources\":");
       body += _resourceGeneration;
-      body += F(",\"commandSeq\":");
-      body += commandSequence;
-      body += F(",\"command\":");
-      body += commandSequence ? F("\"open-ap\"") : F("null");
       body += '}';
       request->send(200, F("application/json"), body);
     });
@@ -379,21 +291,10 @@ private:
     const uint32_t boot = doc[F("boot")].as<uint32_t>();
     const uint32_t scene = doc[F("scene")].as<uint32_t>();
     const uint32_t resources = doc[F("resources")].as<uint32_t>();
-    const uint32_t commandSequence = doc[F("commandSeq")].as<uint32_t>();
-    const char* command = doc[F("command")];
 
     if (boot != _leaderBootId) {
       _leaderBootId = boot;
       _localSceneRevision = 0;
-      _lastCommandSequence = commandSequence;
-    }
-
-    if (commandSequence != _lastCommandSequence) {
-      _lastCommandSequence = commandSequence;
-      if (command && strcmp(command, "open-ap") == 0) {
-        _enterMaintenanceRequested = true;
-        return;
-      }
     }
 
     if (scene != _localSceneRevision && fetchScene()) return;
@@ -782,15 +683,10 @@ private:
   }
 
   uint8_t _role = ROLE_DISABLED;
-  uint8_t _returnButton = 0;
   String _leaderHost = F("4.3.2.1");
   String _lastError;
   bool _setupDone = false;
   bool _rolePending = false;
-  bool _maintenance = false;
-  bool _enterMaintenanceRequested = false;
-  bool _returnRequested = false;
-  bool _returnButtonPressed = false;
   bool _applyingRemote = false;
   uint32_t _bootId = 0;
   uint32_t _leaderBootId = 0;
@@ -798,18 +694,14 @@ private:
   uint32_t _localSceneRevision = 0;
   uint32_t _resourceGeneration = 0;
   uint32_t _localResourceGeneration = 0;
-  uint32_t _commandSequence = 0;
-  uint32_t _lastCommandSequence = 0;
   uint32_t _followerLastSeen = 0;
   uint32_t _lastControlPoll = 0;
   uint32_t _lastResourceScan = 0;
-  uint32_t _maintenanceStarted = 0;
   ResourceEntry* _resources[2] = {nullptr, nullptr};
   uint16_t _resourceCount = 0;
   uint8_t _resourceIndex = 0;
   String _manifestJson[2] = {F("{\"schema\":1,\"generation\":0,\"files\":[]}"), F("{\"schema\":1,\"generation\":0,\"files\":[]}")};
   uint8_t _manifestIndex = 0;
-  portMUX_TYPE _stateMux = portMUX_INITIALIZER_UNLOCKED;
 };
 
 PairSyncUsermod pairSync;
