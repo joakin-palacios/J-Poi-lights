@@ -694,6 +694,7 @@ void serializeInfo(JsonObject root)
 {
   root[F("ver")] = versionString;
   root[F("vid")] = VERSION;
+  root[F("jpoi")] = jPoiBuildString;
   root[F("cn")] = F(WLED_CODENAME);
   root[F("release")] = releaseString;
   root[F("repo")] = repoString;

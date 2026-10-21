@@ -39,6 +39,7 @@ extern const wled_metadata_t WLED_BUILD_DESCRIPTION;
 extern const __FlashStringHelper* repoString;                       // Github repository (if available)
 extern const __FlashStringHelper* productString;                    // Product, WLED_PRODUCT_NAME -- deprecated, use WLED_RELEASE_NAME
 extern const __FlashStringHelper* brandString ;                     // Brand
+extern const __FlashStringHelper* jPoiBuildString;                  // J Poi UTC build identifier
 
 
 // Metadata analysis functions

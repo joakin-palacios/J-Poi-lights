@@ -7,6 +7,9 @@
 #include <HTTPClient.h>
 #include <WiFiClient.h>
 #include <mbedtls/sha256.h>
+#include <esp_timer.h>
+#include "../../include/pov_sync.h"
+#include "../../include/pov_bmp.h"
 
 void requestNumberedPovRescan() __attribute__((weak));
 
@@ -20,6 +23,38 @@ constexpr uint32_t CONTROL_POLL_MS = 1000;
 constexpr uint32_t RESOURCE_SCAN_MS = 10000;
 constexpr uint32_t HTTP_TIMEOUT_MS = 3500;
 constexpr size_t MAX_BMP_SIZE = 768U * 1024U;
+constexpr uint16_t CLOCK_PORT = 11989;
+constexpr uint32_t CLOCK_MAGIC = 0x3253504A; // JPS2, little-endian ESP32 wire format.
+
+struct __attribute__((packed)) PlaybackTimeline {
+  uint32_t session;
+  uint32_t revision;
+  uint64_t startUs;
+  uint8_t active;
+  uint8_t image;
+  uint8_t speed;
+  uint8_t repeats;
+  uint8_t cycling;
+  uint32_t playlist;
+  uint8_t skipped[32];
+};
+
+struct __attribute__((packed)) ClockRequest {
+  uint32_t magic;
+  uint32_t sequence;
+  uint64_t sentUs;
+};
+
+struct __attribute__((packed)) ClockReply {
+  ClockRequest request;
+  uint64_t receivedUs;
+  uint64_t sentUs;
+  uint32_t scene;
+  uint32_t resources;
+  PlaybackTimeline playback;
+};
+
+static_assert(sizeof(ClockRequest) == 16 && sizeof(ClockReply) == 97, "POV clock protocol layout");
 
 struct ResourceEntry {
   uint8_t id;
@@ -34,6 +69,8 @@ public:
     _resources[0] = static_cast<ResourceEntry*>(allocate_buffer(sizeof(ResourceEntry) * 255U, BFRALLOC_PREFER_PSRAM));
     _resources[1] = static_cast<ResourceEntry*>(allocate_buffer(sizeof(ResourceEntry) * 255U, BFRALLOC_PREFER_PSRAM));
     _bootId = esp_random();
+    if (!_bootId) _bootId = 1;
+    _playback.session = _bootId;
     registerRoutes();
     _setupDone = true;
     _rolePending = true;
@@ -41,10 +78,14 @@ public:
 
   void loop() override {
     if (_rolePending) applyRole();
+    serviceClock();
 
     if (_role == ROLE_LEADER) {
       keepExclusiveAp();
-      if (elapsed(_lastResourceScan, RESOURCE_SCAN_MS) && !strip.isUpdating()) {
+      // shortcut: rescan files between POV sessions; use an incremental scanner for live uploads during playback.
+      if ((_povScanRequested || ((!_localPovActive || !_resourceGeneration) && elapsed(_lastResourceScan, RESOURCE_SCAN_MS)))
+          && !strip.isUpdating()) {
+        _povScanRequested = false;
         _lastResourceScan = millis();
         scanResources();
       }
@@ -53,7 +94,7 @@ public:
 
     if (_role != ROLE_FOLLOWER) return;
 
-    if (Network.isConnected() && elapsed(_lastControlPoll, CONTROL_POLL_MS)) {
+    if (Network.isConnected() && !_clockPending && elapsed(_lastControlPoll, CONTROL_POLL_MS)) {
       _lastControlPoll = millis();
       pollControl();
     }
@@ -63,6 +104,13 @@ public:
     if (_role == ROLE_FOLLOWER) {
       _lastControlPoll = 0;
       _localSceneRevision = 0;
+      _localResourceGeneration = 0;
+      _playbackImageReady = false;
+      _clock = PovSync::Clock();
+      _clockPending = false;
+      _leaderAddressKnown = false;
+      _clockUdp.stop();
+      _clockBound = false;
     }
   }
 
@@ -104,11 +152,12 @@ public:
   bool readFromConfig(JsonObject& root) override {
     JsonObject top = root[F("PairSync")];
     const uint8_t oldRole = _role;
+    const String oldHost = _leaderHost;
     bool complete = !top.isNull();
     complete &= getJsonValue(top[F("role")], _role, ROLE_DISABLED);
     complete &= getJsonValue(top[F("leaderHost")], _leaderHost, String(F("4.3.2.1")));
     if (_role > ROLE_FOLLOWER) _role = ROLE_DISABLED;
-    if (_setupDone && oldRole != _role) _rolePending = true;
+    if (_setupDone && (oldRole != _role || oldHost != _leaderHost)) _rolePending = true;
     return complete;
   }
 
@@ -128,7 +177,156 @@ public:
     return true;
   }
 
+  bool povPlayback(const PovSync::Settings& settings, bool active, uint64_t startUs, PovSync::Playback& output) {
+    if (_role == ROLE_DISABLED) return false;
+    const uint64_t now = esp_timer_get_time();
+    if (_role == ROLE_LEADER && active && (!_localPovActive || settings.playlist != _playback.playlist)) _povScanRequested = true;
+    _localPovActive = active;
+    if (_role == ROLE_LEADER) {
+      if (_playback.active != active || _playback.image != settings.image || _playback.speed != settings.speed
+          || _playback.repeats != settings.repeats || _playback.cycling != settings.cycling
+          || _playback.playlist != settings.playlist || _playback.startUs != startUs
+          || memcmp(settings.skipped, _playback.skipped, sizeof(settings.skipped))) {
+        ++_playback.revision;
+        if (!_playback.revision) ++_playback.revision;
+        _playback.startUs = startUs;
+        _playback.active = active;
+        _playback.image = settings.image;
+        _playback.speed = settings.speed;
+        _playback.repeats = settings.repeats;
+        _playback.cycling = settings.cycling;
+        _playback.playlist = settings.playlist;
+        memcpy(_playback.skipped, settings.skipped, sizeof(settings.skipped));
+      }
+      output.nowUs = now;
+      output.ready = active;
+      output.status = PovSync::Status::Leader;
+    } else {
+      if (active && _playback.active && _localResourceGeneration && settings.playlist && settings.playlist != _playback.playlist) {
+        _localResourceGeneration = 0;
+        _playbackImageReady = false;
+      }
+      output.follower = true;
+      output.nowUs = _clock.now(now);
+      output.ready = _clock.acquired() && _playbackImageReady && _playback.active && settings.playlist == _playback.playlist;
+      if (!_clock.count()) output.status = PovSync::Status::Acquiring;
+      else if (!Network.isConnected() || !_clock.fresh(now)) output.status = PovSync::Status::Stale;
+      else if (!_clock.acquired() || !_playback.active || _localSceneRevision != _remoteScene) output.status = PovSync::Status::Acquiring;
+      else if (!_playbackImageReady || !active) output.status = PovSync::Status::ImageNotReady;
+      else output.status = PovSync::Status::Synced;
+    }
+    output.active = _playback.active;
+    output.settings.image = _playback.image;
+    output.settings.speed = _playback.speed;
+    output.settings.repeats = _playback.repeats;
+    output.settings.cycling = _playback.cycling;
+    output.settings.playlist = _playback.playlist;
+    memcpy(output.settings.skipped, _playback.skipped, sizeof(output.settings.skipped));
+    output.startUs = _playback.startUs;
+    return true;
+  }
+
+  bool povImageReady(uint8_t image, const uint8_t* hash) {
+    if (_role != ROLE_FOLLOWER) return true;
+    if (!_playbackImageReady) return false;
+    const ResourceEntry* entry = findResource(image);
+    if (!entry) return false;
+    if (hash && memcmp(entry->sha256, hash, 32)) {
+      _localResourceGeneration = 0;
+      _playbackImageReady = false;
+      return false;
+    }
+    return true;
+  }
+
 private:
+  const ResourceEntry* findResource(uint8_t image) const {
+    const ResourceEntry* entries = _resources[_role == ROLE_LEADER ? _resourceIndex : 0];
+    if (entries) for (uint16_t i = 0; i < _resourceCount; ++i) if (entries[i].id == image) return &entries[i];
+    return nullptr;
+  }
+
+  void checkPlaybackImage() {
+    _playbackImageReady = _localResourceGeneration && _localResourceGeneration == _remoteResources;
+  }
+
+  void observeLeader(uint32_t session) {
+    if (session == _leaderBootId) return;
+    _leaderBootId = session;
+    _localSceneRevision = 0;
+    _localResourceGeneration = 0;
+    _playbackImageReady = false;
+    _clock = PovSync::Clock();
+  }
+
+  void serviceClock() {
+    if (_role == ROLE_DISABLED || (_role == ROLE_FOLLOWER && !Network.isConnected())) {
+      if (_clockBound) _clockUdp.stop();
+      _clockBound = false;
+      _clockPending = false;
+      return;
+    }
+    if (!_clockBound) _clockBound = _clockUdp.begin(CLOCK_PORT);
+    if (!_clockBound) return;
+    for (uint8_t i = 0; i < 4; ++i) {
+      const int size = _clockUdp.parsePacket();
+      if (!size) break;
+      const uint64_t received = esp_timer_get_time();
+      const IPAddress peer = _clockUdp.remoteIP();
+      const uint16_t port = _clockUdp.remotePort();
+      if (_role == ROLE_LEADER && size == sizeof(ClockRequest) && port == CLOCK_PORT) {
+        ClockReply reply = {};
+        if (_clockUdp.read(reinterpret_cast<uint8_t*>(&reply.request), sizeof(ClockRequest)) != sizeof(ClockRequest)
+            || reply.request.magic != CLOCK_MAGIC || reply.request.sentUs > INT64_MAX / 2) continue;
+        reply.receivedUs = received;
+        reply.scene = _sceneRevision;
+        reply.resources = _resourceGeneration;
+        reply.playback = _playback;
+        _followerLastSeen = millis();
+        if (_clockUdp.beginPacket(peer, port)) {
+          reply.sentUs = esp_timer_get_time();
+          _clockUdp.write(reinterpret_cast<const uint8_t*>(&reply), sizeof(reply));
+          _clockUdp.endPacket();
+        }
+      } else if (_role == ROLE_FOLLOWER && size == sizeof(ClockReply) && peer == _leaderAddress && port == CLOCK_PORT) {
+        ClockReply reply;
+        if (_clockUdp.read(reinterpret_cast<uint8_t*>(&reply), sizeof(reply)) != sizeof(reply)
+            || !_clockPending || reply.request.magic != CLOCK_MAGIC || reply.request.sequence != _clockSequence
+            || reply.request.sentUs != _clockRequestUs || !reply.playback.session || reply.playback.active > 1
+            || reply.playback.cycling > 1 || reply.playback.repeats < 1 || reply.playback.repeats > 20
+            || (reply.playback.active && (!reply.playback.image || !reply.playback.playlist))
+            || reply.playback.startUs > reply.sentUs) continue;
+        PovSync::Clock candidate = reply.playback.session == _leaderBootId ? _clock : PovSync::Clock();
+        _clockPending = false;
+        if (!candidate.sample(_clockRequestUs, reply.receivedUs, reply.sentUs, received)) continue;
+        observeLeader(reply.playback.session);
+        _clock = candidate;
+        _playback = reply.playback;
+        _remoteScene = reply.scene;
+        _remoteResources = reply.resources;
+        checkPlaybackImage();
+      } else {
+        _clockUdp.flush();
+      }
+    }
+    if (_role != ROLE_FOLLOWER) return;
+    const uint64_t now = esp_timer_get_time();
+    const uint32_t interval = _clock.count() < 8 || !_clock.fresh(now) ? 100 : 1000;
+    if (!elapsed(_lastClockRequest, interval) || (_clockPending && now - _clockRequestUs < 250000)) return;
+    _lastClockRequest = millis();
+    if (!_leaderAddressKnown) {
+      _leaderAddressKnown = _leaderAddress.fromString(_leaderHost)
+        || WiFi.hostByName(_leaderHost.c_str(), _leaderAddress) == 1;
+      if (!_leaderAddressKnown) return;
+    }
+    ClockRequest request = {CLOCK_MAGIC, ++_clockSequence, uint64_t(esp_timer_get_time())};
+    if (_clockUdp.beginPacket(_leaderAddress, CLOCK_PORT)) {
+      _clockRequestUs = request.sentUs;
+      _clockPending = _clockUdp.write(reinterpret_cast<const uint8_t*>(&request), sizeof(request)) == sizeof(request)
+        && _clockUdp.endPacket();
+    }
+  }
+
   static bool elapsed(uint32_t since, uint32_t interval) {
     return uint32_t(millis() - since) >= interval;
   }
@@ -146,6 +344,19 @@ private:
   void applyRole() {
     _rolePending = false;
     _lastError = String();
+    _clockUdp.stop();
+    _clockBound = false;
+    _clockPending = false;
+    _leaderAddressKnown = false;
+    _clock = PovSync::Clock();
+    _playback = {};
+    _playback.session = _bootId;
+    _playback.repeats = 1;
+    _playbackImageReady = false;
+    _localPovActive = false;
+    _povScanRequested = false;
+    _resourceCount = 0;
+    _resourceGeneration = 0;
 
     if (_role == ROLE_LEADER) {
       apBehavior = AP_BEHAVIOR_ALWAYS;
@@ -284,21 +495,9 @@ private:
   }
 
   void pollControl() {
-    PSRAMDynamicJsonDocument doc(1024);
-    if (!httpGetJson(endpoint(F("/pair/control")), doc)) return;
-    if (doc[F("schema")].as<uint8_t>() != 1) return;
-
-    const uint32_t boot = doc[F("boot")].as<uint32_t>();
-    const uint32_t scene = doc[F("scene")].as<uint32_t>();
-    const uint32_t resources = doc[F("resources")].as<uint32_t>();
-
-    if (boot != _leaderBootId) {
-      _leaderBootId = boot;
-      _localSceneRevision = 0;
-    }
-
-    if (scene != _localSceneRevision && fetchScene()) return;
-    if (resources != _localResourceGeneration) syncResources(resources);
+    if (!_clock.acquired() || !_clock.fresh(esp_timer_get_time())) return;
+    if (_remoteScene != _localSceneRevision && fetchScene()) return;
+    if (_remoteResources != _localResourceGeneration && (!_localPovActive || !_playbackImageReady)) syncResources(_remoteResources);
   }
 
   bool fetchScene() {
@@ -316,7 +515,8 @@ private:
     PSRAMDynamicJsonDocument doc(2U * JSON_BUFFER_SIZE);
     const DeserializationError error = deserializeJson(doc, http.getStream());
     http.end();
-    if (error || doc[F("schema")].as<uint8_t>() != 1 || doc[F("state")].isNull()) {
+    if (error || doc[F("schema")].as<uint8_t>() != 1 || doc[F("boot")].as<uint32_t>() != _leaderBootId
+        || doc[F("state")].isNull()) {
       _lastError = F("invalid leader state");
       return false;
     }
@@ -377,34 +577,13 @@ private:
     return strcmp(name, ".bmp") == 0 ? uint8_t(value) : 0;
   }
 
-  template<typename T>
-  static bool readValue(File& file, T& value) {
-    return file.read(reinterpret_cast<uint8_t*>(&value), sizeof(T)) == sizeof(T);
-  }
-
   static bool validBmp(const char* path) {
     File file = WLED_FS.open(path, "r");
     if (!file) return false;
-    uint16_t signature, planes, depth;
-    uint32_t ignored, offset, dibSize, compression;
-    int32_t width, height;
-    bool valid = readValue(file, signature) && signature == 0x4D42
-      && readValue(file, ignored) && readValue(file, ignored) && readValue(file, offset)
-      && readValue(file, dibSize) && dibSize >= 40
-      && readValue(file, width) && readValue(file, height)
-      && readValue(file, planes) && readValue(file, depth) && readValue(file, compression)
-      && width > 0 && height != 0 && height != INT32_MIN && planes == 1 && depth == 24 && compression == 0;
-    if (valid) {
-      const uint32_t uWidth = uint32_t(width);
-      const uint32_t uHeight = height < 0 ? uint32_t(-height) : uint32_t(height);
-      valid = uWidth <= (UINT32_MAX - 3U) / 3U;
-      if (valid) {
-        const uint32_t rowSize = (uWidth * 3U + 3U) & ~3U;
-        const size_t fileSize = file.size();
-        valid = uHeight <= SIZE_MAX / rowSize && offset >= 14U + dibSize && offset <= fileSize
-          && size_t(rowSize) * uHeight <= fileSize - offset;
-      }
-    }
+    uint8_t header[54];
+    NumberedPov::BmpLayout layout;
+    const bool valid = file.read(header, sizeof(header)) == sizeof(header)
+      && NumberedPov::bmpLayout(header, file.size(), layout);
     file.close();
     return valid;
   }
@@ -535,7 +714,7 @@ private:
     if (!httpGetJson(endpoint(F("/pair/manifest")), doc)) return false;
     if (doc[F("schema")].as<uint8_t>() != 1 || doc[F("generation")].as<uint32_t>() != expectedGeneration) return false;
     JsonArray files = doc[F("files")].as<JsonArray>();
-    if (files.size() > 255) return false;
+    if (files.isNull() || files.size() > 255) return false;
 
     ResourceEntry* desired = static_cast<ResourceEntry*>(allocate_buffer(sizeof(ResourceEntry) * 255U, BFRALLOC_PREFER_PSRAM));
     if (!desired) return false;
@@ -567,8 +746,13 @@ private:
     }
 
     removeStaleResources(desired, count);
+    if (_resources[0]) {
+      memcpy(_resources[0], desired, sizeof(ResourceEntry) * count);
+      _resourceCount = count;
+    }
     free(desired);
     _localResourceGeneration = expectedGeneration;
+    checkPlaybackImage();
     updateFSInfo();
     if (requestNumberedPovRescan) requestNumberedPovRescan();
     _lastError = String();
@@ -683,6 +867,21 @@ private:
   }
 
   uint8_t _role = ROLE_DISABLED;
+  WiFiUDP _clockUdp;
+  bool _clockBound = false;
+  bool _clockPending = false;
+  bool _leaderAddressKnown = false;
+  IPAddress _leaderAddress;
+  uint32_t _lastClockRequest = 0;
+  uint32_t _clockSequence = 0;
+  uint64_t _clockRequestUs = 0;
+  PovSync::Clock _clock;
+  PlaybackTimeline _playback = {};
+  uint32_t _remoteScene = 0;
+  uint32_t _remoteResources = 0;
+  bool _playbackImageReady = false;
+  bool _localPovActive = false;
+  bool _povScanRequested = false;
   String _leaderHost = F("4.3.2.1");
   String _lastError;
   bool _setupDone = false;
@@ -711,4 +910,12 @@ REGISTER_USERMOD(pairSync);
 
 bool usermodBroadcastIP(IPAddress& address) {
   return pairSync.broadcastIP(address);
+}
+
+bool pairSyncPovPlayback(const PovSync::Settings& settings, bool active, uint64_t startUs, PovSync::Playback& playback) {
+  return pairSync.povPlayback(settings, active, startUs, playback);
+}
+
+bool pairSyncPovImageReady(uint8_t image, const uint8_t* hash) {
+  return pairSync.povImageReady(image, hash);
 }

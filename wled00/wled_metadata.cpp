@@ -15,6 +15,10 @@
   #define WLED_REPO "unknown"
 #endif
 
+#ifndef J_POI_BUILD_ID
+  #define J_POI_BUILD_ID "unknown"
+#endif
+
 constexpr uint32_t WLED_CUSTOM_DESC_MAGIC = 0x57535453;  // "WSTS" (WLED System Tag Structure)
 constexpr uint32_t WLED_CUSTOM_DESC_VERSION = 2;    // v1 - original PR; v2 - "safe to update from" version
 
@@ -74,6 +78,10 @@ const __FlashStringHelper* productString = FPSTR(productString_s);
 
 static const char brandString_s [] PROGMEM = WLED_BRAND;
 const __FlashStringHelper* brandString = FPSTR(brandString_s);
+
+// A separate tag preserves WLED's version parsers and OTA compatibility metadata layout.
+static const char jPoiBuildMetadata[] PROGMEM = "J_POI_BUILD_ID=" J_POI_BUILD_ID;
+const __FlashStringHelper* jPoiBuildString = FPSTR(jPoiBuildMetadata + sizeof("J_POI_BUILD_ID=") - 1);
 
 
 

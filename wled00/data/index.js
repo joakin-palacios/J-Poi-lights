@@ -717,6 +717,7 @@ ${urows}
 ${urows===""?'':'<tr><td colspan=2><hr style="height:1px;border-width:0;color:gray;background-color:gray"></td></tr>'}
 ${i.opt&0x100?inforow("Debug","<button class=\"btn btn-xs\" onclick=\"requestJson({'debug':"+(i.opt&0x0080?"false":"true")+"});\"><i class=\"icons "+(i.opt&0x0080?"on":"off")+"\">&#xe08f;</i></button>"):''}
 ${inforow("Build",i.vid)}
+${i.jpoi?inforow("J Poi build (UTC)",i.jpoi):''}
 ${inforow("Signal strength",i.wifi.signal +"% ("+ i.wifi.rssi, " dBm)")}
 ${inforow("Uptime",getRuntimeStr(i.uptime))}
 ${inforow("Time",i.time)}
@@ -1172,6 +1173,9 @@ var povImageControl = null;
 var povImageRequest = 0;
 var povImageStateValue = 0;
 var povWaitControl = null;
+var povJokerStateValue = 0;
+var povRepeatStateValue = 0;
+var povCycleControl = false;
 
 function setPovImageSliderValue(value, fx)
 {
@@ -1242,6 +1246,28 @@ function configurePovWaitSlider(fx, enabled)
 		return;
 	}
 	povWaitControl = {fx: fx};
+	updateTrail(slider);
+}
+
+function configurePovJokerSlider(enabled)
+{
+	let slider = gId('sliderC2');
+	slider.min = enabled ? 1 : 0;
+	slider.max = enabled ? 3 : 255;
+	slider.step = 1;
+	slider.value = enabled ? Math.max(1, Math.min(3, povJokerStateValue)) : povJokerStateValue;
+	updateTrail(slider);
+}
+
+function configurePovCycleSlider(enabled)
+{
+	povCycleControl = enabled;
+	let slider = gId('sliderC3');
+	slider.min = enabled ? 1 : 0;
+	slider.max = enabled ? 20 : 31;
+	slider.step = 1;
+	slider.value = enabled ? Math.max(1, Math.min(20, povRepeatStateValue)) : povRepeatStateValue;
+	if (enabled) gId('slider4').classList.toggle('hide', !gId('checkO1').checked);
 	updateTrail(slider);
 }
 
@@ -1591,8 +1617,10 @@ function readState(s,command=false)
 	gId('sliderSpeed').value = i.sx;
 	gId('sliderIntensity').value = i.ix;
 	setPovImageSliderValue(i.c1 ? i.c1 : 0, i.fx);
-	gId('sliderC2').value = i.c2 ? i.c2 : 0;
-	gId('sliderC3').value  = i.c3 ? i.c3 : 0;
+	povJokerStateValue = i.c2 ? i.c2 : 0;
+	gId('sliderC2').value = povJokerStateValue;
+	povRepeatStateValue = i.c3 ? i.c3 : 0;
+	gId('sliderC3').value = povRepeatStateValue;
 	gId('checkO1').checked = !(!i.o1);
 	gId('checkO2').checked = !(!i.o2);
 	gId('checkO3').checked = !(!i.o3);
@@ -1676,8 +1704,13 @@ function setEffectParameters(idx)
 	if (hasPovImages) slOnOff[2] = slOnOff[2].slice(0, -11);
 	const hasPovWait = slOnOff.length > 0 && slOnOff[0].endsWith('#pov-wait');
 	if (hasPovWait) slOnOff[0] = slOnOff[0].slice(0, -9);
+	const hasPovJokers = slOnOff.length > 3 && slOnOff[3].endsWith('#pov-jokers');
+	if (hasPovJokers) slOnOff[3] = slOnOff[3].slice(0, -11);
+	const hasPovRepeat = slOnOff.length > 4 && slOnOff[4].endsWith('#pov-repeat');
+	if (hasPovRepeat) slOnOff[4] = slOnOff[4].slice(0, -11);
 	configurePovImageSlider(idx, hasPovImages);
 	configurePovWaitSlider(idx, hasPovWait);
+	configurePovJokerSlider(hasPovJokers);
 
 	// set html slider items on/off
 	d.querySelectorAll("#sliders .sliderwrap").forEach((slider, i)=>{
@@ -1691,6 +1724,7 @@ function setEffectParameters(idx)
 		} else
 			slider.parentElement.classList.add('hide');
 	});
+	configurePovCycleSlider(hasPovRepeat);
 
 	if (slOnOff.length > 5) { // up to 3 checkboxes
 		gId('fxopt').classList.remove('fade');
@@ -2549,6 +2583,10 @@ function setCustom(i=1)
 function setOption(i=1, v=false)
 {
 	if (i<1 || i>3) return;
+	if (i===1 && povCycleControl) {
+		gId('checkO1').checked = !!v;
+		configurePovCycleSlider(true);
+	}
 	var obj = {"seg": {}};
 	if      (i===3) obj.seg.o3 = !(!v); //make sure it is bool
 	else if (i===2) obj.seg.o2 = !(!v); //make sure it is bool

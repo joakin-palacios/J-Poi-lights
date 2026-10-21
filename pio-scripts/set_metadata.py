@@ -2,6 +2,9 @@ Import('env')
 import subprocess
 import json
 import re
+from datetime import datetime, timezone
+
+env["J_POI_BUILD_ID"] = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%fZ")
 
 def get_github_repo():
     """Extract GitHub repository name from git remote URL.
@@ -103,6 +106,7 @@ def add_wled_metadata_flags(env, node):
             cdefs.append(("WLED_REPO", f"\\\"{repo}\\\""))
 
     cdefs.append(("WLED_VERSION", WLED_VERSION))
+    cdefs.append(("J_POI_BUILD_ID", f'\\\"{env["J_POI_BUILD_ID"]}\\\"'))
 
     # This transforms the node in to a Builder; it cannot be modified again
     return env.Object(

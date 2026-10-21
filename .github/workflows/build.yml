@@ -17,6 +17,8 @@ jobs:
         cache: 'pip'
     - name: Install PlatformIO
       run: pip install -r requirements.txt
+    - name: Test build identification
+      run: python -m unittest discover -s test -p test_jpoi_build.py -v
     - name: Get default environments
       id: envs
       run: |
@@ -50,7 +52,6 @@ jobs:
         path: |
               ~/.platformio/.cache
               ~/.buildcache
-              build_output
         key: pio-${{ runner.os }}-${{ matrix.environment }}-${{ hashFiles('platformio.ini', 'pio-scripts/output_bins.py') }}-${{ hashFiles('wled00/**', 'usermods/**') }}
         restore-keys: pio-${{ runner.os }}-${{ matrix.environment }}-${{ hashFiles('platformio.ini', 'pio-scripts/output_bins.py') }}-
     - name: Set up Python

@@ -20,19 +20,20 @@ def _create_dirs(dirs=["map", "release", "firmware"]):
         os.makedirs(os.path.join(OUTPUT_DIR, d), exist_ok=True)
 
 def create_release(source):
+    build_id = env["J_POI_BUILD_ID"]
     release_name_def = _get_cpp_define_value(env, "WLED_RELEASE_NAME")
     if release_name_def:
         release_name = release_name_def.replace("\\\"", "")
         with open("package.json", "r") as package:
             version = json.load(package)["version"]        
-        release_file = os.path.join(OUTPUT_DIR, "release", f"WLED_{version}_{release_name}.bin")
+        release_file = os.path.join(OUTPUT_DIR, "release", f"J-Poi_{build_id}_WLED_{version}_{release_name}.bin")
         release_gz_file = release_file + ".gz"
         print(f"Copying {source} to {release_file}")
         shutil.copy(source, release_file)
         bin_gzip(release_file, release_gz_file)
     else:
         variant = env["PIOENV"]
-        bin_file = "{}firmware{}{}.bin".format(OUTPUT_DIR, os.path.sep, variant)
+        bin_file = os.path.join(OUTPUT_DIR, "firmware", f"J-Poi_{build_id}_{variant}.bin")
         print(f"Copying {source} to {bin_file}")
         shutil.copy(source, bin_file)
 

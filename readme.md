@@ -6,6 +6,20 @@ Custom ESP32-S3 poi firmware based on [WLED](https://github.com/Aircoookie/WLED)
 - [Pair Sync](usermods/pair_sync/README.md): leader/follower scene and image synchronization.
 - `platformio_override.ini`: LOLIN S3 Mini build with MPU6050, Numbered POV, and Pair Sync enabled.
 
+## Firmware build identification
+
+Each PlatformIO build gets a UTC identifier at build start, such as `20261021-153042-123456Z` (including microseconds).
+The same identifier appears on the device's **Info** page as **J Poi build (UTC)**, in `/json/info` as `jpoi`,
+in the firmware's embedded `J_POI_BUILD_ID=` metadata tag, and in its output filename:
+
+```text
+build_output/release/J-Poi_<build-id>_WLED_<base-version>_<board>.bin
+```
+
+WLED's upstream version and numeric build ID remain separate. Previous timestamped binaries are retained locally.
+The identifier is generated once per build environment; only the metadata object needs a fresh timestamp compilation.
+Use the same `.bin` on both devices when you want matching build identifiers. Builds do not create commits or releases.
+
 ## Manual GitHub Actions
 
 All workflows are manual-only: pushes, pull requests, tags, and schedules do not start them.
