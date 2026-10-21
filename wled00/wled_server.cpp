@@ -653,6 +653,8 @@ void initServer()
   });
 
 #ifdef WLED_ENABLE_WEBSOCKETS
+  // AP-only usermods can bypass initConnection(), so bind events with the server.
+  ws.onEvent(wsEvent);
   server.addHandler(&ws);
 #endif
 

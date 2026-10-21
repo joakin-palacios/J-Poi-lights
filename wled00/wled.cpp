@@ -677,9 +677,6 @@ void WLED::initAP(bool resetAP)
 void WLED::initConnection()
 {
   DEBUG_PRINTF_P(PSTR("initConnection() called @ %lus.\n"), millis()/1000);
-  #ifdef WLED_ENABLE_WEBSOCKETS
-  ws.onEvent(wsEvent);
-  #endif
 
 #ifndef WLED_DISABLE_ESPNOW
   if (statusESPNow == ESP_NOW_STATE_ON) {
